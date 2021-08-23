@@ -5,9 +5,10 @@ const moment = require('moment-timezone');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
 const membersService = require('../../services/members');
+const labsService = require('../../../shared/labs');
 
-const settingsCache = require('../../services/settings/cache');
-const {i18n} = require('../../lib/common');
+const settingsCache = require('../../../shared/settings-cache');
+const i18n = require('../../../shared/i18n');
 const _ = require('lodash');
 
 const allowedIncludes = ['email_recipients', 'products'];
@@ -110,6 +111,9 @@ module.exports = {
         async query(frame) {
             let member;
             frame.options.withRelated = ['stripeSubscriptions', 'products', 'labels', 'stripeSubscriptions.stripePrice', 'stripeSubscriptions.stripePrice.stripeProduct'];
+            if (!labsService.isSet('multipleProducts')) {
+                delete frame.data.products;
+            }
             try {
                 if (!membersService.config.isStripeConnected()
                     && (frame.data.members[0].stripe_customer_id || frame.data.members[0].comped)) {
@@ -126,7 +130,10 @@ module.exports = {
                 member = await membersService.api.members.create(frame.data.members[0], frame.options);
 
                 if (frame.data.members[0].stripe_customer_id) {
-                    await membersService.api.members.linkStripeCustomer(frame.data.members[0].stripe_customer_id, member);
+                    await membersService.api.members.linkStripeCustomer({
+                        customer_id: frame.data.members[0].stripe_customer_id,
+                        member_id: member.id
+                    }, frame.options);
                 }
 
                 if (frame.data.members[0].comped) {
@@ -184,6 +191,9 @@ module.exports = {
         },
         permissions: true,
         async query(frame) {
+            if (!labsService.isSet('multipleProducts')) {
+                delete frame.data.products;
+            }
             try {
                 frame.options.withRelated = ['stripeSubscriptions', 'products', 'labels', 'stripeSubscriptions.stripePrice', 'stripeSubscriptions.stripePrice.stripeProduct'];
                 const member = await membersService.api.members.update(frame.data.members[0], frame.options);
@@ -197,10 +207,10 @@ module.exports = {
                         await membersService.api.members.cancelComplimentarySubscription(member);
                     }
 
-                    await member.load(['stripeSubscriptions']);
+                    await member.load(['stripeSubscriptions', 'products', 'stripeSubscriptions.stripePrice', 'stripeSubscriptions.stripePrice.stripeProduct']);
                 }
 
-                await member.load(['stripeSubscriptions.customer']);
+                await member.load(['stripeSubscriptions.customer', 'stripeSubscriptions.stripePrice', 'stripeSubscriptions.stripePrice.stripeProduct']);
 
                 return member;
             } catch (error) {
@@ -226,7 +236,8 @@ module.exports = {
             'subscription_id'
         ],
         data: [
-            'cancel_at_period_end'
+            'cancel_at_period_end',
+            'status'
         ],
         validation: {
             options: {
@@ -240,6 +251,9 @@ module.exports = {
             data: {
                 cancel_at_period_end: {
                     required: true
+                },
+                status: {
+                    values: ['canceled']
                 }
             }
         },
@@ -247,13 +261,22 @@ module.exports = {
             method: 'edit'
         },
         async query(frame) {
-            await membersService.api.members.updateSubscription({
-                id: frame.options.id,
-                subscription: {
-                    subscription_id: frame.options.subscription_id,
-                    cancel_at_period_end: frame.data.cancel_at_period_end
-                }
-            });
+            if (frame.data.status === 'canceled') {
+                await membersService.api.members.cancelSubscription({
+                    id: frame.options.id,
+                    subscription: {
+                        subscription_id: frame.options.subscription_id
+                    }
+                });
+            } else {
+                await membersService.api.members.updateSubscription({
+                    id: frame.options.id,
+                    subscription: {
+                        subscription_id: frame.options.subscription_id,
+                        cancel_at_period_end: frame.data.cancel_at_period_end
+                    }
+                });
+            }
             let model = await membersService.api.members.get({id: frame.options.id}, {
                 withRelated: ['labels', 'products', 'stripeSubscriptions', 'stripeSubscriptions.customer', 'stripeSubscriptions.stripePrice', 'stripeSubscriptions.stripePrice.stripeProduct']
             });
@@ -356,36 +379,7 @@ module.exports = {
             method: 'destroy'
         },
         async query(frame) {
-            const {all, filter, search} = frame.options;
-
-            if (!filter && !search && (!all || all !== true)) {
-                throw new errors.IncorrectUsageError({
-                    message: 'DELETE /members/ must be used with a filter or ?all=true'
-                });
-            }
-
-            const knexOptions = _.pick(frame.options, ['transacting']);
-            const filterOptions = Object.assign({}, knexOptions);
-
-            if (all !== true) {
-                if (filter) {
-                    filterOptions.filter = filter;
-                }
-
-                if (search) {
-                    filterOptions.search = search;
-                }
-            }
-
-            // fetch ids of all matching members
-            const memberRows = await models.Member
-                .getFilteredCollectionQuery(filterOptions)
-                .select('members.id')
-                .distinct();
-
-            const memberIds = memberRows.map(row => row.id);
-
-            const bulkDestroyResult = await models.Member.bulkDestroy(memberIds);
+            const bulkDestroyResult = await membersService.api.members.bulkDestroy(frame.options);
 
             // shaped to match the importer response
             return {
@@ -425,6 +419,9 @@ module.exports = {
         validation: {},
         async query(frame) {
             frame.options.withRelated = ['labels', 'stripeSubscriptions', 'stripeSubscriptions.customer'];
+            if (labsService.isSet('multipleProducts')) {
+                frame.options.withRelated.push('products');
+            }
             const page = await membersService.api.members.list(frame.options);
 
             return page;
@@ -453,7 +450,7 @@ module.exports = {
             const pathToCSV = frame.file.path;
             const headerMapping = frame.data.mapping;
 
-            return membersService.importer.process({
+            return membersService.processImport({
                 pathToCSV,
                 headerMapping,
                 globalLabels,

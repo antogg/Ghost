@@ -1,10 +1,10 @@
 const Promise = require('bluebird');
 const _ = require('lodash');
-const {i18n} = require('../lib/common');
+const i18n = require('../../shared/i18n');
 const errors = require('@tryghost/errors');
 const constants = require('@tryghost/constants');
 const security = require('@tryghost/security');
-const settingsCache = require('../services/settings/cache');
+const settingsCache = require('../../shared/settings-cache');
 const limitService = require('../services/limits');
 const ghostBookshelf = require('./base');
 

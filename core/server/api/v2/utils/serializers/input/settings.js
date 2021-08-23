@@ -1,12 +1,11 @@
 const _ = require('lodash');
 const url = require('./utils/url');
 const typeGroupMapper = require('../../../../shared/serializers/input/utils/settings-filter-type-group-mapper');
-const settingsCache = require('../../../../../services/settings/cache');
+const settingsCache = require('../../../../../../shared/settings-cache');
 
 const DEPRECATED_SETTINGS = [
     'bulk_email_settings',
-    'slack',
-    'labs'
+    'slack'
 ];
 
 const deprecatedSupportedSettingsOneToManyMap = {
@@ -92,11 +91,12 @@ module.exports = {
 
         const settings = settingsCache.getAll();
 
-        // Ignore and drop all values with Read-only flag
         frame.data.settings = frame.data.settings.filter((setting) => {
             const settingFlagsStr = settings[setting.key] ? settings[setting.key].flags : '';
             const settingFlagsArr = settingFlagsStr ? settingFlagsStr.split(',') : [];
-            return !settingFlagsArr.includes('RO');
+
+            // Ignore and drop all values with Read-only flag AND 'labs' setting
+            return !settingFlagsArr.includes('RO') && (setting.key !== 'labs');
         });
 
         frame.data.settings.push(...getMappedDeprecatedSettings(frame.data.settings));
@@ -105,6 +105,8 @@ module.exports = {
             const settingType = settings[setting.key] ? settings[setting.key].type : '';
 
             // TODO: Needs to be removed once we get rid of all `object` type settings
+            // NOTE: this transformation is more related to the fact that internal API calls call
+            //       settings API with plain objects instead of stringified ones
             if (_.isObject(setting.value)) {
                 setting.value = JSON.stringify(setting.value);
             }

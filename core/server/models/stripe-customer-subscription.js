@@ -1,4 +1,5 @@
 const ghostBookshelf = require('./base');
+const _ = require('lodash');
 
 const StripeCustomerSubscription = ghostBookshelf.Model.extend({
     tableName: 'members_stripe_customers_subscriptions',
@@ -37,19 +38,22 @@ const StripeCustomerSubscription = ghostBookshelf.Model.extend({
             current_period_end: defaultSerializedObject.current_period_end
         };
 
-        if (defaultSerializedObject.stripePrice) {
+        if (!_.isEmpty(defaultSerializedObject.stripePrice)) {
             serialized.price = {
                 id: defaultSerializedObject.stripePrice.stripe_price_id,
+                price_id: defaultSerializedObject.stripePrice.id,
                 nickname: defaultSerializedObject.stripePrice.nickname,
                 amount: defaultSerializedObject.stripePrice.amount,
                 interval: defaultSerializedObject.stripePrice.interval,
+                type: defaultSerializedObject.stripePrice.type,
                 currency: String.prototype.toUpperCase.call(defaultSerializedObject.stripePrice.currency)
             };
 
             if (defaultSerializedObject.stripePrice.stripeProduct) {
+                const productData = defaultSerializedObject.stripePrice.stripeProduct.product || {};
                 serialized.price.product = {
                     id: defaultSerializedObject.stripePrice.stripeProduct.stripe_product_id,
-                    name: defaultSerializedObject.stripePrice.stripeProduct.name,
+                    name: productData.name,
                     product_id: defaultSerializedObject.stripePrice.stripeProduct.product_id
                 };
             }

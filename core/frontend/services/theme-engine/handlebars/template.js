@@ -2,8 +2,12 @@
 const templates = {};
 const _ = require('lodash');
 const errors = require('@tryghost/errors');
-const hbs = require('../../theme-engine/engine');
-const {i18n} = require('../../../../server/lib/common');
+const tpl = require('@tryghost/tpl');
+const hbs = require('../engine');
+
+const messages = {
+    templateNotFound: 'Template {name} not found.'
+};
 
 // Execute a template helper
 // All template helpers are register as partial view.
@@ -12,7 +16,7 @@ templates.execute = function execute(name, context, data) {
 
     if (partial === undefined) {
         throw new errors.IncorrectUsageError({
-            message: i18n.t('warnings.helpers.template.templateNotFound', {name: name})
+            message: tpl(messages.templateNotFound, {name: name})
         });
     }
 

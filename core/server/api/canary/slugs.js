@@ -1,5 +1,5 @@
 const models = require('../../models');
-const {i18n} = require('../../lib/common');
+const i18n = require('../../../shared/i18n');
 const errors = require('@tryghost/errors');
 
 const allowedTypes = {
@@ -11,6 +11,9 @@ const allowedTypes = {
 module.exports = {
     docName: 'slugs',
     generate: {
+        headers: {
+            cacheInvalidate: true
+        },
         options: [
             'include',
             'type'

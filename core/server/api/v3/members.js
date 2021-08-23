@@ -6,8 +6,8 @@ const errors = require('@tryghost/errors');
 const models = require('../../models');
 const membersService = require('../../services/members');
 
-const settingsCache = require('../../services/settings/cache');
-const {i18n} = require('../../lib/common');
+const settingsCache = require('../../../shared/settings-cache');
+const i18n = require('../../../shared/i18n');
 
 const allowedIncludes = ['email_recipients'];
 
@@ -351,7 +351,7 @@ module.exports = {
             const pathToCSV = frame.file.path;
             const headerMapping = frame.data.mapping;
 
-            return membersService.importer.process({
+            return membersService.processImport({
                 pathToCSV,
                 headerMapping,
                 globalLabels,

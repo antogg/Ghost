@@ -4,18 +4,20 @@ const uuid = require('uuid');
 const moment = require('moment');
 const Promise = require('bluebird');
 const {sequence} = require('@tryghost/promise');
-const {i18n} = require('../lib/common');
+const i18n = require('../../shared/i18n');
 const errors = require('@tryghost/errors');
+const nql = require('@nexes/nql');
 const htmlToPlaintext = require('../../shared/html-to-plaintext');
 const ghostBookshelf = require('./base');
 const config = require('../../shared/config');
-const settingsCache = require('../services/settings/cache');
+const settingsCache = require('../../shared/settings-cache');
 const limitService = require('../services/limits');
 const mobiledocLib = require('../lib/mobiledoc');
 const relations = require('./relations');
 const urlUtils = require('../../shared/url-utils');
+
 const MOBILEDOC_REVISIONS_COUNT = 10;
-const ALL_STATUSES = ['published', 'draft', 'scheduled'];
+const ALL_STATUSES = ['published', 'draft', 'scheduled', 'sent'];
 
 let Post;
 let Posts;
@@ -101,6 +103,14 @@ Post = ghostBookshelf.Model.extend({
             }
         });
 
+        // update legacy email_recipient_filter values to proper NQL
+        if (attrs.email_recipient_filter === 'free') {
+            attrs.email_recipient_filter = 'status:free';
+        }
+        if (attrs.email_recipient_filter === 'paid') {
+            attrs.email_recipient_filter = 'status:-free';
+        }
+
         return attrs;
     },
 
@@ -108,7 +118,12 @@ Post = ghostBookshelf.Model.extend({
     formatOnWrite(attrs) {
         // Ensure all URLs are stored as transform-ready with __GHOST_URL__ representing config.url
         const urlTransformMap = {
-            mobiledoc: 'mobiledocToTransformReady',
+            mobiledoc: {
+                method: 'mobiledocToTransformReady',
+                options: {
+                    cardTransformers: mobiledocLib.cards
+                }
+            },
             html: 'htmlToTransformReady',
             plaintext: 'plaintextToTransformReady',
             custom_excerpt: 'htmlToTransformReady',
@@ -138,6 +153,28 @@ Post = ghostBookshelf.Model.extend({
                 attrs[attrToTransform] = urlUtils[method](attrs[attrToTransform], transformOptions);
             }
         });
+
+        // update legacy email_recipient_filter values to proper NQL
+        if (attrs.email_recipient_filter === 'free') {
+            attrs.email_recipient_filter = 'status:free';
+        }
+        if (attrs.email_recipient_filter === 'paid') {
+            attrs.email_recipient_filter = 'status:-free';
+        }
+
+        // transform visibility NQL queries to special-case values where necessary
+        // ensures checks against special-case values such as `{{#has visibility="paid"}}` continue working
+        if (attrs.visibility && !['public', 'members', 'paid'].includes(attrs.visibility)) {
+            if (attrs.visibility === 'status:-free') {
+                attrs.visibility = 'paid';
+            } else {
+                const visibilityNql = nql(attrs.visibility);
+
+                if (visibilityNql.queryJSON({status: 'free'}) && visibilityNql.queryJSON({status: '-free'})) {
+                    attrs.visibility = 'members';
+                }
+            }
+        }
 
         return attrs;
     },
@@ -185,12 +222,61 @@ Post = ghostBookshelf.Model.extend({
     filterExpansions: function filterExpansions() {
         const postsMetaKeys = _.without(ghostBookshelf.model('PostsMeta').prototype.orderAttributes(), 'posts_meta.id', 'posts_meta.post_id');
 
-        return postsMetaKeys.map((pmk) => {
+        const expansions = [{
+            key: 'primary_tag',
+            replacement: 'tags.slug',
+            expansion: 'posts_tags.sort_order:0+tags.visibility:public'
+        }, {
+            key: 'primary_author',
+            replacement: 'authors.slug',
+            expansion: 'posts_authors.sort_order:0+authors.visibility:public'
+        }, {
+            key: 'authors',
+            replacement: 'authors.slug'
+        }, {
+            key: 'author',
+            replacement: 'authors.slug'
+        }, {
+            key: 'tag',
+            replacement: 'tags.slug'
+        }, {
+            key: 'tags',
+            replacement: 'tags.slug'
+        }];
+
+        const postMetaKeyExpansions = postsMetaKeys.map((pmk) => {
             return {
                 key: pmk.split('.')[1],
                 replacement: pmk
             };
         });
+
+        return expansions.concat(postMetaKeyExpansions);
+    },
+
+    filterRelations: function filterRelations() {
+        return {
+            tags: {
+                tableName: 'tags',
+                type: 'manyToMany',
+                joinTable: 'posts_tags',
+                joinFrom: 'post_id',
+                joinTo: 'tag_id'
+            },
+            authors: {
+                tableName: 'users',
+                tableNameAs: 'authors',
+                type: 'manyToMany',
+                joinTable: 'posts_authors',
+                joinFrom: 'post_id',
+                joinTo: 'author_id'
+            },
+            posts_meta: {
+                tableName: 'posts_meta',
+                type: 'oneToOne',
+                joinFrom: 'post_id'
+            }
+        };
     },
 
     emitChange: function emitChange(event, options = {}) {
@@ -548,7 +634,10 @@ Post = ghostBookshelf.Model.extend({
         }
 
         // email_recipient_filter is read-only and should only be set using a query param when publishing/scheduling
-        if (options.email_recipient_filter && options.email_recipient_filter !== 'none' && this.hasChanged('status') && (newStatus === 'published' || newStatus === 'scheduled')) {
+        if (options.email_recipient_filter
+            && (options.email_recipient_filter !== 'none')
+            && this.hasChanged('status')
+            && (newStatus === 'published' || newStatus === 'scheduled')) {
             this.set('email_recipient_filter', options.email_recipient_filter);
         }
 
@@ -561,6 +650,12 @@ Post = ghostBookshelf.Model.extend({
                     }
                 });
             });
+        }
+
+        // NOTE: this is a stopgap solution for email-only posts where their status is unchanged after publish
+        //       but the usual publis/send newsletter flow continues
+        if (model.related('posts_meta').get('email_only') && (newStatus === 'published') && this.hasChanged('status')) {
+            this.set('status', 'sent');
         }
 
         // If a title is set, not the same as the old title, a draft post, and has never been published
@@ -668,10 +763,6 @@ Post = ghostBookshelf.Model.extend({
         return this.belongsToMany('Tag', 'posts_tags', 'post_id', 'tag_id')
             .withPivot('sort_order')
             .query('orderBy', 'sort_order', 'ASC');
-    },
-
-    fields: function fields() {
-        return this.morphMany('AppField', 'relatable');
     },
 
     mobiledoc_revisions() {

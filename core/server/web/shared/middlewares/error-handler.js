@@ -1,9 +1,9 @@
 const hbs = require('express-hbs');
 const _ = require('lodash');
-const debug = require('ghost-ignition').debug('error-handler');
+const debug = require('@tryghost/debug')('error-handler');
 const errors = require('@tryghost/errors');
 const config = require('../../../../shared/config');
-const {i18n} = require('../../../lib/common');
+const i18n = require('../../../../shared/i18n');
 const helpers = require('../../../../frontend/services/routing/helpers');
 const sentry = require('../../../../shared/sentry');
 
@@ -165,7 +165,7 @@ _private.ThemeErrorRenderer = (err, req, res, next) => {
     // Format Data
     const data = {
         message: err.message,
-        // @deprecated Remove in Ghost 4.0
+        // @deprecated Remove in Ghost 5.0
         code: err.statusCode,
         statusCode: err.statusCode,
         errorDetails: err.errorDetails || []

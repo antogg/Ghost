@@ -2,15 +2,15 @@ const _ = require('lodash');
 const security = require('@tryghost/security');
 const constants = require('@tryghost/constants');
 const errors = require('@tryghost/errors');
-const {i18n} = require('../../lib/common');
+const i18n = require('../../../shared/i18n');
 const models = require('../../models');
 const urlUtils = require('../../../shared/url-utils');
 const mail = require('../mail');
 
 const tokenSecurity = {};
 
-function generateToken(email, settingsAPI) {
-    const options = {context: {internal: true}};
+function generateToken(email, settingsAPI, transaction) {
+    const options = {context: {internal: true}, transacting: transaction};
     let dbHash;
     let token;
 

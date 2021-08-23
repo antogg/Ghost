@@ -1,13 +1,12 @@
+const errors = require('@tryghost/errors');
+const tpl = require('@tryghost/tpl');
 const {URL} = require('url');
 const crypto = require('crypto');
 const createKeypair = require('keypair');
 const path = require('path');
 
-const COMPLIMENTARY_PLAN = {
-    name: 'Complimentary',
-    currency: 'usd',
-    interval: 'year',
-    amount: '0'
+const messages = {
+    incorrectKeyType: 'type must be one of "direct" or "connect".'
 };
 
 class MembersConfigProvider {
@@ -99,7 +98,7 @@ class MembersConfigProvider {
      */
     getStripeKeys(type) {
         if (type !== 'direct' && type !== 'connect') {
-            throw new Error();
+            throw new errors.IncorrectUsageError(tpl(messages.incorrectKeyType));
         }
 
         const secretKey = this._settingsCache.get(`stripe_${type === 'connect' ? 'connect_' : ''}secret_key`);
@@ -190,7 +189,7 @@ class MembersConfigProvider {
             product: {
                 name: this._settingsCache.get('stripe_product_name')
             },
-            plans: [COMPLIMENTARY_PLAN].concat(this._settingsCache.get('stripe_plans') || []),
+            plans: this._settingsCache.get('stripe_plans') || [],
             appInfo: {
                 name: 'Ghost',
                 partner_id: 'pp_partner_DKmRVtTs4j9pwZ',

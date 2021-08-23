@@ -8,20 +8,31 @@
  *
  * This file is a great place for all the cross-component event handling in lieu of refactoring
  */
+
+const debug = require('@tryghost/debug')('bridge');
 const errors = require('@tryghost/errors');
 const config = require('./shared/config');
-const logging = require('./shared/logging');
-const {events, i18n} = require('./server/lib/common');
+const logging = require('@tryghost/logging');
+const tpl = require('@tryghost/tpl');
 const themeEngine = require('./frontend/services/theme-engine');
+const settingsCache = require('./shared/settings-cache');
+
+// Listen to settings.lang.edited, similar to the member service and models/base/listeners
+const events = require('./server/lib/common/events');
+
+const messages = {
+    activateFailed: 'Unable to activate the theme "{theme}".'
+};
 
 class Bridge {
     constructor() {
         /**
          * When locale changes, we reload theme translations
-         * @deprecated: the term "lang" was deprecated in favour of "locale" publicly 4.0
+         * @deprecated: the term "lang" was deprecated in favor of "locale" publicly in 4.0
          */
-        events.on('settings.lang.edited', () => {
-            this.getActiveTheme().initI18n();
+        events.on('settings.lang.edited', (model) => {
+            debug('Active theme init18n');
+            this.getActiveTheme().initI18n({locale: model.get('value')});
         });
     }
 
@@ -30,6 +41,9 @@ class Bridge {
     }
 
     activateTheme(loadedTheme, checkedTheme, error) {
+        let settings = {
+            locale: settingsCache.get('lang')
+        };
         // no need to check the score, activation should be used in combination with validate.check
         // Use the two theme objects to set the current active theme
         try {
@@ -39,17 +53,16 @@ class Bridge {
                 previousGhostAPI = this.getActiveTheme().engine('ghost-api');
             }
 
-            themeEngine.setActive(loadedTheme, checkedTheme, error);
+            themeEngine.setActive(settings, loadedTheme, checkedTheme, error);
             const currentGhostAPI = this.getActiveTheme().engine('ghost-api');
 
             if (previousGhostAPI !== undefined && (previousGhostAPI !== currentGhostAPI)) {
                 events.emit('services.themes.api.changed');
-                const siteApp = require('./server/web/site/app');
-                siteApp.reload();
+                this.reloadFrontend();
             }
         } catch (err) {
             logging.error(new errors.InternalServerError({
-                message: i18n.t('errors.middleware.themehandler.activateFailed', {theme: loadedTheme.name}),
+                message: tpl(messages.activateFailed, {theme: loadedTheme.name}),
                 err: err
             }));
         }
@@ -61,6 +74,13 @@ class Bridge {
         } else {
             return config.get('api:versions:default');
         }
+    }
+
+    reloadFrontend() {
+        const apiVersion = this.getFrontendApiVersion();
+        debug('reload frontend', apiVersion);
+        const siteApp = require('./server/web/site/app');
+        siteApp.reload({apiVersion});
     }
 }
 

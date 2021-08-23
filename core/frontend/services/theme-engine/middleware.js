@@ -1,13 +1,17 @@
 const _ = require('lodash');
 const hbs = require('./engine');
 const urlUtils = require('../../../shared/url-utils');
-const config = require('../../../shared/config');
-const {i18n} = require('../proxy');
+const {api} = require('../proxy');
 const errors = require('@tryghost/errors');
-const settingsCache = require('../../../server/services/settings/cache');
-const labs = require('../../../server/services/labs');
+const tpl = require('@tryghost/tpl');
+const settingsCache = require('../../../shared/settings-cache');
+const labs = require('../../../shared/labs');
 const activeTheme = require('./active');
 const preview = require('./preview');
+
+const messages = {
+    missingTheme: 'The currently active theme "{theme}" is missing.'
+};
 
 // ### Ensure Active Theme
 // Ensure there's a properly set & mounted active theme before attempting to serve a site request
@@ -20,17 +24,7 @@ function ensureActiveTheme(req, res, next) {
         return next(new errors.InternalServerError({
             // We use the settingsCache here, because the setting will be set,
             // even if the theme itself is not usable because it is invalid or missing.
-            message: i18n.t('errors.middleware.themehandler.missingTheme', {theme: settingsCache.get('active_theme')})
-        }));
-    }
-
-    // CASE: bootstrap theme validation failed, we would like to show the errors on the site [only production]
-    if (activeTheme.get().error && config.get('env') === 'production') {
-        return next(new errors.InternalServerError({
-            // We use the settingsCache here, because the setting will be set,
-            // even if the theme itself is not usable because it is invalid or missing.
-            message: i18n.t('errors.middleware.themehandler.invalidTheme', {theme: settingsCache.get('active_theme')}),
-            errorDetails: activeTheme.get().error.errorDetails
+            message: tpl(messages.missingTheme, {theme: settingsCache.get('active_theme')})
         }));
     }
 
@@ -42,45 +36,53 @@ function ensureActiveTheme(req, res, next) {
     next();
 }
 
-/*
- * @TODO
- * This should be definitely refactored and we need to consider _some_
- * members settings as publicly readable
- */
-function haxGetMembersPriceData() {
-    const defaultPriceData = {
-        monthly: 0,
-        yearly: 0
+function calculateLegacyPriceData(products) {
+    const defaultPrice = {
+        amount: 0,
+        currency: 'usd',
+        interval: 'year',
+        nickname: ''
     };
 
+    function makePriceObject(price) {
+        const numberAmount = 0 + price.amount;
+        const dollarAmount = numberAmount ? Math.round(numberAmount / 100) : 0;
+        return {
+            valueOf() {
+                return dollarAmount;
+            },
+            amount: numberAmount,
+            currency: price.currency,
+            nickname: price.name,
+            interval: price.interval
+        };
+    }
+
+    const defaultProduct = products[0] || {};
+
+    const monthlyPrice = makePriceObject(defaultProduct.monthly_price || defaultPrice);
+
+    const yearlyPrice = makePriceObject(defaultProduct.yearly_price || defaultPrice);
+
+    const priceData = {
+        monthly: monthlyPrice,
+        yearly: yearlyPrice,
+        currency: monthlyPrice ? monthlyPrice.currency : defaultPrice.currency
+    };
+
+    return priceData;
+}
+
+async function getProductAndPricesData() {
     try {
-        const stripePlans = settingsCache.get('stripe_plans');
+        const page = await api.canary.productsPublic.browse({
+            include: ['monthly_price', 'yearly_price'],
+            limit: 'all'
+        });
 
-        const priceData = stripePlans.reduce((prices, plan) => {
-            const numberAmount = 0 + plan.amount;
-            const dollarAmount = numberAmount ? Math.round(numberAmount / 100) : 0;
-            return Object.assign(prices, {
-                [plan.name.toLowerCase()]: {
-                    valueOf() {
-                        return dollarAmount;
-                    },
-                    amount: numberAmount,
-                    currency: plan.currency,
-                    nickname: plan.name,
-                    interval: plan.interval
-                }
-            });
-        }, {});
-
-        priceData.currency = stripePlans[0].currency;
-
-        if (Number.isInteger(priceData.monthly.valueOf()) && Number.isInteger(priceData.yearly.valueOf())) {
-            return priceData;
-        }
-
-        return defaultPriceData;
+        return page.products;
     } catch (err) {
-        return defaultPriceData;
+        return [];
     }
 }
 
@@ -101,7 +103,7 @@ function getSiteData(req) {
     return siteData;
 }
 
-function updateGlobalTemplateOptions(req, res, next) {
+async function updateGlobalTemplateOptions(req, res, next) {
     // Static information, same for every request unless the settings change
     // @TODO: bind this once and then update based on events?
     // @TODO: decouple theme layer from settings cache using the Content API
@@ -112,7 +114,16 @@ function updateGlobalTemplateOptions(req, res, next) {
         posts_per_page: activeTheme.get().config('posts_per_page'),
         image_sizes: activeTheme.get().config('image_sizes')
     };
-    const priceData = haxGetMembersPriceData();
+    const productData = await getProductAndPricesData();
+    const priceData = calculateLegacyPriceData(productData);
+
+    let products = null;
+    let product = null;
+    if (productData.length === 1) {
+        product = productData[0];
+    } else {
+        products = productData;
+    }
 
     // @TODO: only do this if something changed?
     // @TODO: remove blog in a major where we are happy to break more themes
@@ -123,7 +134,9 @@ function updateGlobalTemplateOptions(req, res, next) {
                 site: siteData,
                 labs: labsData,
                 config: themeData,
-                price: priceData
+                price: priceData,
+                product,
+                products
             }
         });
     }

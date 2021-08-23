@@ -1,6 +1,12 @@
 const shared = require('../shared');
 const localUtils = require('./utils');
 
+// ESLint Override Notice
+// This is a valid index.js file - it just exports a lot of stuff!
+// Long term we would like to change the API architecture to reduce this file,
+// but that's not the problem the index.js max - line eslint "proxy" rule is there to solve.
+/* eslint-disable max-lines */
+
 module.exports = {
     get http() {
         return shared.http;
@@ -107,6 +113,10 @@ module.exports = {
         return shared.pipeline(require('./preview'), localUtils);
     },
 
+    get emailPost() {
+        return shared.pipeline(require('./email-post'), localUtils);
+    },
+
     get oembed() {
         return shared.pipeline(require('./oembed'), localUtils);
     },
@@ -173,5 +183,9 @@ module.exports = {
 
     get authorsPublic() {
         return shared.pipeline(require('./authors-public'), localUtils, 'content');
+    },
+
+    get productsPublic() {
+        return shared.pipeline(require('./products-public'), localUtils, 'content');
     }
 };

@@ -340,7 +340,28 @@ DataGenerator.Content = {
             email: 'comped@test.com',
             name: 'Vinz Clortho',
             uuid: 'f6f91461-d7d8-4a3f-aa5d-8e582c40b344',
-            status: 'comped'
+            status: 'paid'
+        },
+        {
+            id: ObjectId().toHexString(),
+            email: 'vip@test.com',
+            name: 'Winston Zeddemore',
+            uuid: 'f6f91461-d7d8-4a3f-aa5d-8e582c40b345',
+            status: 'free'
+        },
+        {
+            id: ObjectId().toHexString(),
+            email: 'vip-paid@test.com',
+            name: 'Peter Venkman',
+            uuid: 'f6f91461-d7d8-4a3f-aa5d-8e582c40b346',
+            status: 'paid'
+        },
+        {
+            id: ObjectId().toHexString(),
+            email: 'with-product@test.com',
+            name: 'Dana Barrett',
+            uuid: 'f6f91461-d7d8-4a3f-aa5d-8e582c40b347',
+            status: 'paid'
         }
     ],
 
@@ -362,6 +383,11 @@ DataGenerator.Content = {
             id: ObjectId().toHexString(),
             name: 'Label 2',
             slug: 'label-2'
+        },
+        {
+            id: ObjectId().toHexString(),
+            name: 'VIP',
+            slug: 'vip'
         }
     ],
 
@@ -381,10 +407,25 @@ DataGenerator.Content = {
             email: 'trialing@test.com'
         },
         {
+            id: ObjectId().toHexString(),
             member_id: null, // relation added later
             customer_id: 'cus_HR3tBmNhx4QsZ0',
             name: 'Vinz Clortho',
             email: 'comped@test.com'
+        },
+        {
+            id: ObjectId().toHexString(),
+            member_id: null, // relation added later
+            customer_id: 'cus_HR3tBmNhx4QsZ1',
+            name: 'Peter Venkman',
+            email: 'vip-paid@test.com'
+        },
+        {
+            id: ObjectId().toHexString(),
+            member_id: null, // relation added later
+            customer_id: 'cus_HR3tBmNhx4QsZ2',
+            name: 'Dana Barrett',
+            email: 'with-product@test.com'
         }
     ],
 
@@ -441,34 +482,45 @@ DataGenerator.Content = {
     stripe_prices: [
         {
             id: ObjectId().toHexString(),
-            stripe_price_id: '173e16a1fffa7d232b398e4a9b08d266a456ae8f3d23e5f11cc608ced6730bb8',
+            stripe_price_id: '173e16a1fffa7d232b398e4a9b08d266a456ae8f3d23e5f11cc608ced6730b12',
             stripe_product_id: '109c85c734fb9992e7bc30a26af66c22f5c94d8dc62e0a33cb797be902c06b2d',
-            active: 1,
+            active: true,
             nickname: 'Monthly',
             currency: 'USD',
-            amount: 500,
+            amount: 5000,
             type: 'recurring',
             interval: 'month'
         },
         {
             id: ObjectId().toHexString(),
-            stripe_price_id: '173e16a1fffa7d232b398e4a9b08d266a456ae8f3d23e5f11cc608ced6730bb9',
+            stripe_price_id: '173e16a1fffa7d232b398e4a9b08d266a456ae8f3d23e5f11cc608ced6730bb8',
             stripe_product_id: '109c85c734fb9992e7bc30a26af66c22f5c94d8dc62e0a33cb797be902c06b2d',
-            active: 1,
-            nickname: 'Yearly',
-            currency: 'USD',
-            amount: 1500,
+            active: true,
+            nickname: 'Monthly',
+            currency: 'GBP',
+            amount: 1200,
             type: 'recurring',
-            interval: 'year'
+            interval: 'month'
         },
         {
             id: ObjectId().toHexString(),
             stripe_price_id: '173e16a1fffa7d232b398e4a9b08d266a456ae8f3d23e5f11cc608ced6730ba0',
             stripe_product_id: '109c85c734fb9992e7bc30a26af66c22f5c94d8dc62e0a33cb797be902c06b2d',
-            active: 1,
+            active: true,
             nickname: 'Yearly',
-            currency: 'USD',
-            amount: 2400,
+            currency: 'GBP',
+            amount: 12000,
+            type: 'recurring',
+            interval: 'year'
+        },
+        {
+            id: ObjectId().toHexString(),
+            stripe_price_id: '173e16a1fffa7d232b398e4a9b08d266a456ae8f3d23e5f11cc608ced6730bb9',
+            stripe_product_id: '109c85c734fb9992e7bc30a26af66c22f5c94d8dc62e0a33cb797be902c06b2d',
+            active: true,
+            nickname: 'Yearly',
+            currency: 'GBP',
+            amount: 15000,
             type: 'recurring',
             interval: 'year'
         }
@@ -643,6 +695,8 @@ DataGenerator.Content.email_recipients[3].member_id = DataGenerator.Content.memb
 DataGenerator.Content.members_stripe_customers[0].member_id = DataGenerator.Content.members[2].id;
 DataGenerator.Content.members_stripe_customers[1].member_id = DataGenerator.Content.members[3].id;
 DataGenerator.Content.members_stripe_customers[2].member_id = DataGenerator.Content.members[4].id;
+DataGenerator.Content.members_stripe_customers[3].member_id = DataGenerator.Content.members[6].id;
+DataGenerator.Content.members_stripe_customers[4].member_id = DataGenerator.Content.members[7].id;
 
 DataGenerator.forKnex = (function () {
     function createBasic(overrides) {
@@ -1166,17 +1220,29 @@ DataGenerator.forKnex = (function () {
         createMember(DataGenerator.Content.members[1]),
         createMember(DataGenerator.Content.members[2]),
         createMember(DataGenerator.Content.members[3]),
-        createMember(DataGenerator.Content.members[4])
+        createMember(DataGenerator.Content.members[4]),
+        createMember(DataGenerator.Content.members[5]),
+        createMember(DataGenerator.Content.members[6]),
+        createMember(DataGenerator.Content.members[7])
     ];
 
     const labels = [
-        createLabel(DataGenerator.Content.labels[0])
+        createLabel(DataGenerator.Content.labels[0]),
+        createLabel(DataGenerator.Content.labels[2])
     ];
 
     const members_labels = [
         createMembersLabels(
             DataGenerator.Content.members[0].id,
             DataGenerator.Content.labels[0].id
+        ),
+        createMembersLabels(
+            DataGenerator.Content.members[5].id,
+            DataGenerator.Content.labels[2].id
+        ),
+        createMembersLabels(
+            DataGenerator.Content.members[6].id,
+            DataGenerator.Content.labels[2].id
         )
     ];
 
@@ -1187,7 +1253,9 @@ DataGenerator.forKnex = (function () {
     const members_stripe_customers = [
         createBasic(DataGenerator.Content.members_stripe_customers[0]),
         createBasic(DataGenerator.Content.members_stripe_customers[1]),
-        createBasic(DataGenerator.Content.members_stripe_customers[2])
+        createBasic(DataGenerator.Content.members_stripe_customers[2]),
+        createBasic(DataGenerator.Content.members_stripe_customers[3]),
+        createBasic(DataGenerator.Content.members_stripe_customers[4])
     ];
 
     const stripe_products = [
@@ -1200,7 +1268,8 @@ DataGenerator.forKnex = (function () {
     const stripe_prices = [
         createBasic(DataGenerator.Content.stripe_prices[0]),
         createBasic(DataGenerator.Content.stripe_prices[1]),
-        createBasic(DataGenerator.Content.stripe_prices[2])
+        createBasic(DataGenerator.Content.stripe_prices[2]),
+        createBasic(DataGenerator.Content.stripe_prices[3])
     ];
 
     const stripe_customer_subscriptions = [

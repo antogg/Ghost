@@ -1,6 +1,6 @@
-const settingsCache = require('../settings/cache');
+const settingsCache = require('../../../shared/settings-cache');
 const MembersApi = require('@tryghost/members-api');
-const logging = require('../../../shared/logging');
+const logging = require('@tryghost/logging');
 const mail = require('../mail');
 const models = require('../../models');
 const signinEmail = require('./emails/signin');
@@ -177,7 +177,8 @@ function createApiInstance(config) {
             MemberStatusEvent: models.MemberStatusEvent,
             StripeProduct: models.StripeProduct,
             StripePrice: models.StripePrice,
-            Product: models.Product
+            Product: models.Product,
+            Settings: models.Settings
         },
         logger: logging
     });
